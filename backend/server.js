@@ -3,6 +3,12 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import morgan from "morgan";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 dotenv.config();
 const app = express();
 
@@ -17,10 +23,14 @@ const mongoUri = process.env.MONGO_URI;
 const dbName = process.env.DB_NAME;
 
 // Connect to MongoDB
-mongoose
-  .connect(mongoUri, { dbName })
-  .then(() => console.log("Connected to MongoDB"))
-  .catch((err) => console.error("Failed to connect to MongoDB", err));
+if (mongoUri) {
+  mongoose
+    .connect(mongoUri, dbName ? { dbName } : {})
+    .then(() => console.log("Connected to MongoDB"))
+    .catch((err) => console.error("Failed to connect to MongoDB", err));
+} else {
+  console.warn("Warning: MONGO_URI is not set in environment variables.");
+}
 
   // Define the Post schema and model
 const postSchema = new mongoose.Schema({
@@ -93,10 +103,28 @@ app.delete("/api/v1/posts/:id", async (req, res) => {
     res.status(400).send(err);
   }
 });
-//Test route
-app.get("/", (req, res) => {
-  res.send({ message: "Welcome to Express Test" });
+// Serve static files from frontend build
+const frontendDist = path.join(__dirname, "../frontend/dist");
+app.use(express.static(frontendDist));
+
+// API health/test route
+app.get("/api/health", (req, res) => {
+  res.send({ message: "Server is healthy" });
 });
+
+// SPA fallback for frontend client-side routing
+app.use((req, res, next) => {
+  if (req.method === "GET" && !req.path.startsWith("/api")) {
+    const indexPath = path.join(frontendDist, "index.html");
+    return res.sendFile(indexPath, (err) => {
+      if (err) {
+        res.status(200).send({ message: "Welcome to Express API (frontend build not found)" });
+      }
+    });
+  }
+  next();
+});
+
 //Start the server
 app.listen(port, () => {
   console.log(`Server is running at http://localhost:${port}`);
